@@ -153,6 +153,8 @@
       if (q.cust) { const { error } = await sb.from("customers").upsert(q.cust); if (error) throw error; q.sale.customer_id = q.cust.id; }
       const { error } = await sb.from("sales").upsert(saleRow(q.sale)); if (error) throw error;
     } else if (q.op === "sales") {
+      const custs = q.sales.filter(x => x._cust).map(x => { x.customer_id = x._cust.id; return x._cust; });
+      for (let i = 0; i < custs.length; i += 500) { const { error } = await sb.from("customers").upsert(custs.slice(i, i + 500)); if (error) throw error; }
       for (let i = 0; i < q.sales.length; i += 500) { const { error } = await sb.from("sales").upsert(q.sales.slice(i, i + 500).map(saleRow)); if (error) throw error; }
     } else if (q.op === "del") {
       const { error } = await sb.from("sales").delete().eq("id", q.id); if (error) throw error;

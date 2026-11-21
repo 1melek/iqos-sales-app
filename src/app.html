@@ -700,41 +700,85 @@ $("perNext").onclick=()=>{if(perOff<0){perOff++;renderStats()}};
 let impParsed=null;
 $("impToggle").onclick=()=>{const h=!$("impBox").hidden;$("impBox").hidden=h;$("impToggle").setAttribute("aria-expanded",!h);
   $("impPdv").innerHTML=PDVS.map(p=>`<option>${p}</option>`).join("");$("impPdv").value=S.pdv;if(!$("impDate").value)$("impDate").value=dkey(new Date(Date.now()-864e5))};
-function colorOf(t){return /purple|electric/.test(t)?"epurple":/garnet|rouge|red|bordeaux/.test(t)?"garnet":/digital|violet/.test(t)?"dviolet":/black|noir|midnight/.test(t)?"black":/breeze|bleu|blue/.test(t)?"blue":/leaf|vert|green/.test(t)?"green":null}
-function modelOf(t){return /prime/.test(t)?"prime":/\bone\b|one\s*i|i\s*one/.test(t)?"one":/i?l+uma|\bi\b/.test(t)?"i":null}
+// ---- Lecture des notes : tolère majuscules, accents, fautes de frappe et ordre libre des champs ----
+const norm=t=>t.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+function colorOf(t){
+  if(/purple|purpel|prpl|\bppl\b|electr|elect\b|\bel\b|\be\s*purple/.test(t))return "epurple";
+  if(/garnet|rouge|\bred\b|bordeaux/.test(t))return "garnet";
+  if(/digital|violet|\bviolette?\b/.test(t))return "dviolet";
+  if(/black|noire?\b|midnight/.test(t))return "black";
+  if(/breeze|bleue?\b|blue/.test(t))return "blue";
+  if(/leaf|verte?\b|green/.test(t))return "green";
+  return null}
+function modelOf(t){
+  if(/prime/.test(t))return "prime";
+  if(/\bone\b/.test(t))return "one";
+  if(/i?l+u+m+a|ilum|\bi\b/.test(t))return "i";
+  return null}
+const isDevice=t=>/prime|\bone\b|i?l+u+m+a/.test(t);
+function readSlashLine(t,line){
+  // ex. « Lau/one i bleu / sonia ferchiou/24055596 » ou « Mgm/Las/Illuma i violet/nom/27 661 549 »
+  const f=line.split("/").map(x=>x.trim()).filter(Boolean);let ut=null,cat=null,vouchers=0,dev=null,phone="",email="";const names=[];
+  for(const raw of f){const x=norm(raw);
+    if(/^la[us]\b/.test(x)&&x.length<=4){ut=x.slice(0,3);continue}
+    if(/^mgm$/.test(x)){cat="mgm";continue}
+    const rf=x.match(/^(\d+)?\s*referr?al?s?$/);if(rf){cat="ref";vouchers=rf[1]?+rf[1]:1;continue}
+    if(!dev&&isDevice(x)){dev=x;continue}
+    if(/@/.test(x)){email=raw;continue}
+    if(/^[\d\s+.-]{8,}$/.test(x)){phone=x.replace(/\D/g,"");continue}
+    names.push(raw)}
+  if(!dev)return {err:"modèle introuvable"};
+  const model=modelOf(dev),color=colorOf(dev);
+  if(!color)return {err:"couleur manquante"};
+  if(!M(model).colors.includes(color))return {err:`${COLORS[color].name} n'existe pas pour ${M(model).name}`};
+  if(cat==="mgm")ut="las";if(cat==="ref"&&!ut)ut="lau";
+  return {model,color,cat:cat||"full",ut:ut||"las",vouchers:cat==="ref"?vouchers:0,client:names.join(" ").replace(/\s+/g," ").trim(),phone,email};
+}
 function parseReports(text,defDate){
   let date=defDate,sec="full";const out=[],gts={},bad=[];
   for(const raw of text.split(/\r?\n/)){
-    const line=raw.trim();if(!line)continue;const t=line.toLowerCase().replace(/[•*]/g," ").replace(/\s+/g," ").trim();
+    const line=raw.trim();if(!line)continue;const t=norm(line).replace(/[•*]/g," ").replace(/\s+/g," ").trim();
     const dm=t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/);
     if(dm){const yy=dm[3].length===2?"20"+dm[3]:dm[3];date=`${yy}-${dm[2].padStart(2,"0")}-${dm[1].padStart(2,"0")}`;sec="full";continue}
     const g=t.match(/^gt\s*:?\s*(\d+)/)||t.match(/^(\d+)\s*gt\b/);if(g){gts[date]=(gts[date]||0)+ +g[1];continue}
-    if(/^full\s*price/.test(t)){sec="full";continue} if(/^mgm\b/.test(t)){sec="mgm";continue} if(/^referral\s*:?$/.test(t)){sec="ref";continue}
-    if(/vendu|bonsoir|bonne soir|^stock/.test(t))continue;
-    const q=t.match(/^(\d{1,2})\s*(.+)$/);
-    if(q){const body=q[2],model=modelOf(body),color=colorOf(body);
-      if(!model||!color||!M(model).colors.includes(color)){bad.push(line);continue}
-      const v=body.match(/\((\d+)\s*referral\)/);const cat=v?"ref":sec;
-      const ut=cat==="mgm"?"las":/\blau\b/.test(body)?"lau":/\blas\b/.test(body)?"las":cat==="ref"?"lau":"las";
-      for(let i=0;i<+q[1];i++)out.push({date,model,color,cat,ut,vouchers:cat==="ref"?(v?+v[1]:1):0});continue}
-    bad.push(line);
+    if(line.includes("/")){const r=readSlashLine(t,line);if(r.err){bad.push(`${line} (${r.err})`);continue}out.push({date,...r});continue}
+    if(!isDevice(t)){
+      if(/^full\s*price/.test(t)){sec="full";continue} if(/^mgm\b/.test(t)){sec="mgm";continue} if(/^referr?al/.test(t)){sec="ref";continue}
+      if(/vendu|bonsoir|bonne soir|^stock|^salut/.test(t))continue;
+      bad.push(line);continue}
+    // ancien format de rapport : « 01 Illuma i one noir (las) » ou ligne sans quantité « Illuma i one vert (las) [nom,téléphone] »
+    const q=t.match(/^(\d{1,2})\s*(.+)$/),n=q?+q[1]:1,body=q?q[2]:t;
+    const model=modelOf(body),color=colorOf(body);
+    if(!color){bad.push(`${line} (couleur manquante)`);continue}
+    if(!M(model).colors.includes(color)){bad.push(`${line} (${COLORS[color].name} n'existe pas pour ${M(model).name})`);continue}
+    const v=body.match(/\(?(\d+)\s*referr?al\)?/);const cat=v?"ref":sec;
+    const ut=cat==="mgm"?"las":/\blau\b/.test(body)?"lau":/\blas\b/.test(body)?"las":cat==="ref"?"lau":"las";
+    const br=line.match(/\[([^\],]+),?\s*([\d\s]*)\]/);
+    for(let i=0;i<n;i++)out.push({date,model,color,cat,ut,vouchers:cat==="ref"?(v?+v[1]:1):0,client:br?br[1].trim():"",phone:br?br[2].replace(/\D/g,""):"",email:""});
   }
   return {sales:out,gts,bad};
 }
+const impKey=x=>[x.pdv,dkey(x.ts),x.model,x.color,x.cat,x.ut,norm(x.client&&x.client!=="Import"?x.client:"")].join("|");
 $("impFileBtn").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("impFile").click()}};
 $("impFile").onchange=()=>{const f=$("impFile").files[0];if(!f)return;$("impFile").value="";const r=new FileReader();
   r.onload=()=>{$("impText").value=r.result;toast(`${f.name} chargé · ${r.result.split(/\n/).length} lignes`);$("impParse").click()};r.readAsText(f)};
 $("impParse").onclick=()=>{
   const r=parseReports($("impText").value,$("impDate").value||dkey(new Date()));impParsed=r;
-  const days=[...new Set(r.sales.map(x=>x.date).concat(Object.keys(r.gts)))].sort();
-  $("impPrev").hidden=false;$("impGo").hidden=!(r.sales.length||days.length);
-  $("impPrev").innerHTML=(days.length?days.map(d=>{const L=r.sales.filter(x=>x.date===d);return `<div><b>${new Date(d+"T12:00").toLocaleDateString("fr-FR")}</b> · ${L.length} vente${L.length>1?"s":""} (${L.filter(x=>x.ut==="las").length} LAS)${r.gts[d]?` · GT ${r.gts[d]}`:""}</div>`+
-    L.map(x=>`<div>&nbsp;&nbsp;${M(x.model).name} ${COLORS[x.color].name} · ${x.cat==="ref"?"Referral ×"+x.vouchers:x.cat==="mgm"?"MGM":"Full"} · ${x.ut.toUpperCase()}</div>`).join("")}).join(""):"<div>Aucune vente reconnue.</div>")+
-    (r.bad.length?`<div class="bad">Lignes non comprises (ignorées) : ${r.bad.map(esc).join(" · ")}</div>`:"");
+  const pdv=$("impPdv").value,have=new Set(S.sales.filter(x=>x.imported).map(impKey));
+  r.sales.forEach(x=>x.dup=have.has(impKey({...x,pdv,ts:new Date(x.date+"T18:00").getTime()})));
+  const fresh=r.sales.filter(x=>!x.dup),days=[...new Set(r.sales.map(x=>x.date).concat(Object.keys(r.gts)))].sort().reverse();
+  $("impPrev").hidden=false;$("impGo").hidden=!(fresh.length||Object.keys(r.gts).length);
+  $("impGo").textContent=`Importer ${fresh.length} vente${fresh.length>1?"s":""}`;
+  const lab=x=>`${M(x.model).name} ${COLORS[x.color].name} · ${x.cat==="ref"?"Referral ×"+x.vouchers:x.cat==="mgm"?"MGM":"Full"} · ${x.ut.toUpperCase()}${x.client?" · "+esc(x.client):""}${x.dup?" · <i>déjà importée</i>":""}`;
+  $("impPrev").innerHTML=`<div><b>${r.sales.length} ventes reconnues</b> sur ${days.length} jours (${r.sales.filter(x=>x.ut==="las").length} LAS)${r.bad.length?`, <span class="bad">${r.bad.length} ligne${r.bad.length>1?"s":""} à vérifier</span>`:""}.</div>`+
+    (r.bad.length?`<div class="bad">À vérifier (ignorées) :<br>${r.bad.map(esc).join("<br>")}</div>`:"")+
+    days.map(d=>{const L=r.sales.filter(x=>x.date===d);return `<div style="margin-top:6px"><b>${new Date(d+"T12:00").toLocaleDateString("fr-FR")}</b> · ${L.length} vente${L.length>1?"s":""} (${L.filter(x=>x.ut==="las").length} LAS)${r.gts[d]?` · GT ${r.gts[d]}`:""}</div>`+L.map(x=>`<div>&nbsp;&nbsp;${lab(x)}</div>`).join("")}).join("");
 };
 $("impGo").onclick=()=>{
   if(!impParsed)return;const pdv=$("impPdv").value;let n=0;
-  const added=[];for(const x of impParsed.sales){const ts=new Date(x.date+"T18:00").getTime()+n;const sale={id:newId(),pdv,model:x.model,color:x.color,cat:x.cat,ut:x.ut,vouchers:x.vouchers,ts,client:"Import",imported:true};S.sales.push(sale);added.push(sale);n++}
+  const added=[];for(const x of impParsed.sales.filter(x=>!x.dup)){const ts=new Date(x.date+"T18:00").getTime()+n;
+    const cust=(x.client||x.phone||x.email)?{id:newId(),nom:x.client||null,telephone:x.phone||null,email:x.email||null}:null;
+    const sale={id:newId(),pdv,model:x.model,color:x.color,cat:x.cat,ut:x.ut,vouchers:x.vouchers,ts,client:x.client||"Import",imported:true,_cust:cust};S.sales.push(sale);added.push(sale);n++}
   cloud("sales",added);
   for(const d in impParsed.gts){S.gtd[pdv+"|"+d]=impParsed.gts[d];cloud("gt",pdv,d,impParsed.gts[d])}
   save();renderAll();toast(`${n} vente${n>1?"s":""} importée${n>1?"s":""}`);$("impText").value="";$("impPrev").hidden=true;$("impGo").hidden=true;impParsed=null;
