@@ -1,0 +1,6 @@
+{
+  "appId": "tn.salesexpert.app",
+  "appName": "Sales Expert",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}
