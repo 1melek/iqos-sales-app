@@ -146,7 +146,7 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
 
 <div class="app">
   <header>
-    <h1>Sales Expert<small>Démo · données de test sur cet appareil</small></h1>
+    <h1>Sales Expert<small id="acct">Démo · données de test sur cet appareil</small></h1>
     <label class="label" for="pdv" hidden>Point de vente</label>
     <select id="pdv" aria-label="Point de vente"></select>
   </header>
@@ -327,6 +327,8 @@ let form={model:"one",color:"dviolet",cat:"full",ut:"las",vouchers:1}, repKind="
 const $=id=>document.getElementById(id);
 function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,1800)}
 function setPressed(box,v){box.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===v))}
+const newId=()=>{try{return crypto.randomUUID()}catch(e){return "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,()=>(Math.random()*16|0).toString(16))}};
+const cloud=(...a)=>{if(window.cloudHook)window.cloudHook(...a)};
 const dkey=d=>{d=new Date(d);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
 const gtToday=()=>S.gtd[S.pdv+"|"+dkey(new Date())]||0;
 const today=()=>S.sales.filter(x=>x.pdv===S.pdv&&new Date(x.ts).toDateString()===new Date().toDateString());
@@ -352,7 +354,7 @@ $("cat").onclick=e=>{const b=e.target.closest("button");if(b){form.cat=b.dataset
 $("vMinus").onclick=()=>{form.vouchers=Math.max(1,form.vouchers-1);renderForm()};
 $("vPlus").onclick=()=>{form.vouchers++;renderForm()};
 $("ut").onclick=e=>{const b=e.target.closest("button");if(b&&!b.disabled){form.ut=b.dataset.v;renderForm()}};
-document.querySelectorAll(".counter .step button[data-k]").forEach(b=>b.onclick=()=>{const key=S.pdv+"|"+dkey(new Date());S.gtd[key]=Math.max(0,(S.gtd[key]||0)+ +b.dataset.d);save();renderAll()});
+document.querySelectorAll(".counter .step button[data-k]").forEach(b=>b.onclick=()=>{const key=S.pdv+"|"+dkey(new Date());S.gtd[key]=Math.max(0,(S.gtd[key]||0)+ +b.dataset.d);cloud("gt",S.pdv,dkey(new Date()),S.gtd[key]);save();renderAll()});
 // ---- Scan d'un code depuis la galerie ----
 let scan=null;
 $("scanBtn").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("scanFile").click()}};
@@ -443,9 +445,12 @@ $("scanFile").onchange=()=>{
 };
 $("save").onclick=()=>{
   if(!$("consent").checked&&($("nom").value||$("tel").value||$("email").value)){toast("Coche le consentement du client");return}
-  S.sales.push({id:Math.random().toString(36).slice(2),pdv:S.pdv,model:form.model,color:form.color,cat:form.cat,ut:form.ut,ts:Date.now(),
-    client:[$("prenom").value,$("nom").value].filter(Boolean).join(" ")||"Client sans fiche",parrain:form.cat==="mgm"?$("parrain").value:"",vouchers:form.cat==="ref"?form.vouchers:0,code:scan?scan.text:"",serial:scan?scan.serial:""});
-  if(scan&&!scan.known){S.codes=S.codes||{};S.codes[scan.key]={model:form.model,color:form.color};toast("Code appris pour les prochaines ventes")}
+  const sale={id:newId(),pdv:S.pdv,model:form.model,color:form.color,cat:form.cat,ut:form.ut,ts:Date.now(),
+    client:[$("prenom").value,$("nom").value].filter(Boolean).join(" ")||"Client sans fiche",parrain:form.cat==="mgm"?$("parrain").value:"",vouchers:form.cat==="ref"?form.vouchers:0,code:scan?scan.text:"",serial:scan?scan.serial:""};
+  S.sales.push(sale);
+  const cust=($("nom").value||$("prenom").value||$("tel").value||$("email").value)?{id:newId(),nom:$("nom").value,prenom:$("prenom").value,telephone:$("tel").value,email:$("email").value,date_naissance:$("naiss").value||null,consentement_le:$("consent").checked?new Date().toISOString():null}:null;
+  cloud("sale",sale,cust);
+  if(scan&&!scan.known){S.codes=S.codes||{};S.codes[scan.key]={model:form.model,color:form.color};if(scan.key.startsWith("GTIN:"))cloud("code",scan.key.slice(5),form.model,form.color,scan.ref);toast("Code appris pour les prochaines ventes")}
   scan=null;$("scanRes").className="scanres";$("scanRes").textContent="Choisis une photo du code carré de la boîte (à côté du code unique) : le modèle, la couleur et le code unique se remplissent tout seuls.";
   ["prenom","nom","tel","naiss","email","parrain"].forEach(i=>$(i).value="");$("consent").checked=false;
   save();renderAll();toast(`Vente enregistrée · ${M(form.model).name} ${COLORS[form.color].name}`);
@@ -464,7 +469,7 @@ function renderDay(){
     <span class="chip ${x.cat!=="full"?"mgm":""}">${x.cat==="mgm"?"MGM":x.cat==="ref"?"REF ×"+x.vouchers:"FULL"} · ${x.ut.toUpperCase()}</span>
     <button class="del" data-id="${x.id}" aria-label="Supprimer cette vente">×</button></li>`).join(""):`<li><span class="meta"><b>Aucune vente aujourd'hui</b><span>Enregistre une vente dans l'onglet Vendre.</span></span></li>`;
 }
-$("saleList").onclick=e=>{const b=e.target.closest(".del");if(b){S.sales=S.sales.filter(x=>x.id!==b.dataset.id);save();renderAll();toast("Vente supprimée")}};
+$("saleList").onclick=e=>{const b=e.target.closest(".del");if(b){S.sales=S.sales.filter(x=>x.id!==b.dataset.id);cloud("del",b.dataset.id);save();renderAll();toast("Vente supprimée")}};
 $("goalMinus").onclick=()=>{S.goal=Math.max(1,S.goal-1);save();renderDay()};
 $("goalPlus").onclick=()=>{S.goal++;save();renderDay()};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -679,12 +684,13 @@ function teamLas(name,R){
   return Math.round(full*el*(.55+(h%60)/100));
 }
 function renderBoard(R,mine){
-  const me=PDVS.includes(S.pdv)?S.pdv:"Moi",rows=[{n:`Toi · ${me}`,v:mine,me:true}].concat(TEAM.filter(t=>t!==S.pdv).map(t=>({n:t,v:teamLas(t,R)}))).sort((a,b)=>b.v-a.v);
+  const real=window.cloudBoard&&window.cloudBoard(R);
+  const me=PDVS.includes(S.pdv)?S.pdv:"Moi",rows=real||[{n:`Toi · ${me}`,v:mine,me:true}].concat(TEAM.filter(t=>t!==S.pdv).map(t=>({n:t,v:teamLas(t,R)}))).sort((a,b)=>b.v-a.v);
   const target=per==="month"?S.monthGoal:per==="week"?Math.round(S.monthGoal/4.3):S.monthGoal*12,mx=Math.max(target,...rows.map(r=>r.v));
   $("boardTitle").textContent=`Classement LAS · ${R.label}`;
   $("board").innerHTML=rows.map((r,i)=>`<li class="${r.me?"me":""}"><span class="rk">${i+1}</span><span class="who"><b>${esc(r.n)}${i===0?" 🏆":""}</b><span class="track"><span class="fill ${r.v>=target?"hit":""}" style="display:block;width:${Math.min(100,r.v/mx*100)}%"></span></span></span><output>${r.v}</output></li>`).join("");
-  const pos=rows.findIndex(r=>r.me),ahead=rows[pos-1];
-  $("boardHint").textContent=(pos===0?"Tu es en tête, garde le rythme !":`Tu es ${pos+1}e sur ${rows.length}. Encore ${ahead.v-rows[pos].v+1} LAS pour passer devant ${ahead.n}.`)+" Les autres points de vente sont des chiffres d'exemple : dans l'app complète, ce seront les vraies ventes de tes coéquipiers.";
+  const pos=Math.max(0,rows.findIndex(r=>r.me)),ahead=rows[pos-1];
+  $("boardHint").textContent=(pos===0?"Tu es en tête, garde le rythme !":`Tu es ${pos+1}e sur ${rows.length}. Encore ${ahead.v-rows[pos].v+1} LAS pour passer devant ${ahead.n}.`)+(real?" Classement en direct de l'équipe.":" Les autres points de vente sont des chiffres d'exemple : dans l'app complète, ce seront les vraies ventes de tes coéquipiers.");
 }
 $("statPer").onclick=e=>{const b=e.target.closest("button");if(b){per=b.dataset.v;perOff=0;renderStats()}};
 $("perPrev").onclick=()=>{perOff--;renderStats()};
@@ -728,8 +734,9 @@ $("impParse").onclick=()=>{
 };
 $("impGo").onclick=()=>{
   if(!impParsed)return;const pdv=$("impPdv").value;let n=0;
-  for(const x of impParsed.sales){const ts=new Date(x.date+"T18:00").getTime()+n;S.sales.push({id:"i"+ts+Math.random().toString(36).slice(2,6),pdv,model:x.model,color:x.color,cat:x.cat,ut:x.ut,vouchers:x.vouchers,ts,client:"Import",imported:true});n++}
-  for(const d in impParsed.gts)S.gtd[pdv+"|"+d]=impParsed.gts[d];
+  const added=[];for(const x of impParsed.sales){const ts=new Date(x.date+"T18:00").getTime()+n;const sale={id:newId(),pdv,model:x.model,color:x.color,cat:x.cat,ut:x.ut,vouchers:x.vouchers,ts,client:"Import",imported:true};S.sales.push(sale);added.push(sale);n++}
+  cloud("sales",added);
+  for(const d in impParsed.gts){S.gtd[pdv+"|"+d]=impParsed.gts[d];cloud("gt",pdv,d,impParsed.gts[d])}
   save();renderAll();toast(`${n} vente${n>1?"s":""} importée${n>1?"s":""}`);$("impText").value="";$("impPrev").hidden=true;$("impGo").hidden=true;impParsed=null;
 };
 function renderAll(){renderForm();renderDay();renderStock();renderReport();renderStats()}

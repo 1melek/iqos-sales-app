@@ -4,6 +4,8 @@ const fs = require("fs"), path = require("path");
 const root = path.join(__dirname, "..");
 let body = fs.readFileSync(path.join(root, "src/app.html"), "utf8");
 body = body.replace(/<script src="https:\/\/unpkg\.com\/@zxing\/library@[^"]+"><\/script>/, '<script src="zxing.min.js"></script>');
+// Base partagée (Supabase) : uniquement dans l'APK
+body = body.replace('<script src="zxing.min.js"></script>', '<script src="zxing.min.js"></script>\n<script src="supabase.js"></script>');
 const head = `<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8">
@@ -19,6 +21,7 @@ document.addEventListener("click", e => {
   if (a && a.href) { e.preventDefault(); window.location.href = a.href; }
 }, true);
 </script>
+<script src="cloud.js"></script>
 </body></html>
 `;
 fs.writeFileSync(path.join(root, "www/index.html"), head + body + tail);
