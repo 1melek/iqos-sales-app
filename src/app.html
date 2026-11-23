@@ -160,6 +160,13 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
     <div class="due" id="due" hidden></div>
     <!-- VENDRE -->
     <section data-view="vendre">
+      <div class="seg" id="saleMode"><button data-v="me" aria-pressed="true">Ma vente</button><button data-v="qo" aria-pressed="false">Quick ordering</button></div>
+      <div class="group" id="qoFields" hidden>
+        <p class="hint">Vente faite par un collègue avec tes appareils. Elle est enregistrée à part : elle ne compte pas dans tes ventes officielles, ton objectif ni le classement.</p>
+        <div class="grid2"><select id="qoWho" aria-label="Collègue"></select><input id="qoPos" placeholder="Point de vente (POS)" autocomplete="off" list="qoPosList"></div>
+        <datalist id="qoPosList"></datalist>
+        <p class="hint" id="qoLeft"></p>
+      </div>
       <div class="scan">
         <label class="btn ghost" for="scanFile" tabindex="0" id="scanBtn">Scanner le code de la boîte (photo de la galerie)</label>
         <input type="file" id="scanFile" accept="image/*" hidden>
@@ -215,7 +222,7 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
 
     <!-- RAPPORTS -->
     <section data-view="rapport" hidden>
-      <div class="seg" id="repKind"><button data-v="ventes" aria-pressed="true">Ventes</button><button data-v="stock" aria-pressed="false">Stock</button><button data-v="arrivage" aria-pressed="false">Arrivage</button><button data-v="commande" aria-pressed="false">Commande</button></div>
+      <div class="seg" id="repKind"><button data-v="ventes" aria-pressed="true">Ventes</button><button data-v="stock" aria-pressed="false">Stock</button><button data-v="arrivage" aria-pressed="false">Arrivage</button><button data-v="commande" aria-pressed="false">Commande</button><button data-v="qo" aria-pressed="false">QO</button></div>
       <pre class="report" id="report"></pre>
       <div class="group">
         <div class="row" style="align-items:end"><div class="group" style="flex:3"><label class="label" for="grp">Envoyer dans le groupe</label><select id="grp"></select></div>
@@ -275,7 +282,7 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
 
     <!-- STOCK & ARRIVAGES -->
     <section data-view="stock" hidden>
-      <div class="seg" id="stockKind" style="font-size:14px"><button data-v="inv" aria-pressed="true">Inventaire</button><button data-v="arr" aria-pressed="false">Arrivage</button><button data-v="cmd" aria-pressed="false">Commande</button></div>
+      <div class="seg" id="stockKind" style="font-size:14px"><button data-v="inv" aria-pressed="true">Inventaire</button><button data-v="arr" aria-pressed="false">Arrivage</button><button data-v="cmd" aria-pressed="false">Commande</button><button data-v="qo" aria-pressed="false">QO</button></div>
       <div id="invBox" class="group">
         <p class="hint">Stock calculé : stock de départ + arrivages − ventes. Corrige une case si le comptage physique diffère.</p>
         <div id="invTables" class="group"></div>
@@ -291,6 +298,15 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
         <div id="cmdTables" class="group"></div>
         <label class="check"><input type="checkbox" id="sac"> Ajouter « +++Sac » (il me faut des sacs)</label>
         <button class="btn primary" id="saveCmd">Préparer la commande</button>
+      </div>
+      <div id="qoBox" class="group" hidden>
+        <div class="tiles" id="qoTiles"></div>
+        <div id="qoList" class="group"></div>
+        <span class="label">Nouvelle sortie Quick ordering</span>
+        <p class="hint">Un collègue prend des appareils avec ton accord : ils sortent de ton stock tout de suite. Le point de vente sera noté à chaque vente.</p>
+        <input id="qoName" placeholder="Nom du collègue" autocomplete="off" list="qoNames"><datalist id="qoNames"></datalist>
+        <div id="qoTables" class="group"></div>
+        <button class="btn primary" id="saveQo">Enregistrer la sortie</button>
       </div>
     </section>
   </main>
@@ -336,6 +352,9 @@ function seed(){
 let S; try{S=JSON.parse(localStorage.getItem("se-demo-v2"))}catch(e){} if(!S||!S.sales)S=seed();
 if(!S.groups){S.groups=[{id:"g1",name:"Indirect retail group",link:""},{id:"g2",name:"CREW",link:""},{id:"g3",name:"RNTA",link:""}];
   S.groupFor={ventes:"g1",arrivage:"g1",stock:"g2",commande:"g3"}}
+S.qo=S.qo||[];S.qoRet=S.qoRet||[];S.qoSales=S.qoSales||[];
+if(!S.groups.some(g=>g.id==="gqo"))S.groups.push({id:"gqo",name:"Quick ordering",link:""});
+if(!S.groupFor.qo)S.groupFor.qo="gqo";
 const save=()=>{try{localStorage.setItem("se-demo-v2",JSON.stringify(S))}catch(e){}};
 
 let form={model:"one",color:"dviolet",cat:"full",ut:"las",vouchers:1}, repKind="ventes", lastArrival=null, lastCmd=null;
@@ -462,13 +481,19 @@ $("save").onclick=()=>{
   if(!$("consent").checked&&($("nom").value||$("tel").value||$("email").value)){toast("Coche le consentement du client");return}
   const sale={id:newId(),pdv:S.pdv,model:form.model,color:form.color,cat:form.cat,ut:form.ut,ts:Date.now(),created:Date.now(),
     client:[$("prenom").value,$("nom").value].filter(Boolean).join(" ")||"Client sans fiche",phone:$("tel").value.replace(/\D/g,""),email:$("email").value.trim(),parrain:form.cat==="mgm"?$("parrain").value:"",vouchers:form.cat==="ref"?form.vouchers:0,code:scan?scan.text:"",serial:scan?scan.serial:""};
-  S.sales.push(sale);
+  if(saleMode==="qo"){
+    const who=$("qoWho").value,pos=$("qoPos").value.trim();
+    if(!who){toast("Enregistre d'abord une sortie QO dans Stock › QO");return}
+    if(!pos){toast("Indique le point de vente (POS) de cette vente");return}
+    if((qoBal(who)[sale.model+"."+sale.color]||0)<=0){toast(`${who} n'a plus de ${M(sale.model).name} ${COLORS[sale.color].name} en QO`);return}
+    sale.qo=who;sale.qoPos=pos;S.qoSales.push(sale);
+  } else S.sales.push(sale);
   const cust=($("nom").value||$("prenom").value||$("tel").value||$("email").value)?{id:newId(),nom:$("nom").value,prenom:$("prenom").value,telephone:$("tel").value,email:$("email").value,date_naissance:$("naiss").value||null,consentement_le:$("consent").checked?new Date().toISOString():null}:null;
-  cloud("sale",sale,cust);
+  if(!sale.qo)cloud("sale",sale,cust);
   if(scan&&!scan.known){S.codes=S.codes||{};S.codes[scan.key]={model:form.model,color:form.color};if(scan.key.startsWith("GTIN:"))cloud("code",scan.key.slice(5),form.model,form.color,scan.ref);toast("Code appris pour les prochaines ventes")}
   scan=null;$("scanRes").className="scanres";$("scanRes").textContent="Choisis une photo du code carré de la boîte (à côté du code unique) : le modèle, la couleur et le code unique se remplissent tout seuls.";
   ["prenom","nom","tel","naiss","email","parrain"].forEach(i=>$(i).value="");$("consent").checked=false;
-  save();renderAll();toast(`Vente enregistrée · ${M(form.model).name} ${COLORS[form.color].name}`);
+  save();renderAll();toast(`${sale.qo?"Vente QO":"Vente"} enregistrée · ${M(form.model).name} ${COLORS[form.color].name}`);
 };
 
 // ---- Aujourd'hui ----
@@ -484,11 +509,11 @@ function renderDay(){
 // Une vente ne peut être supprimée que pendant 3 minutes après sa saisie
 const DEL_MS=3*60000, delLeft=x=>x.created?DEL_MS-(Date.now()-x.created):0, mmss=ms=>{const t=Math.ceil(ms/1000);return Math.floor(t/60)+":"+String(t%60).padStart(2,"0")};
 $("saleList").onclick=e=>{const b=e.target.closest(".del");if(!b){const li=e.target.closest("li.sale");if(li){openSale=openSale===li.dataset.id?null:li.dataset.id;renderSaleList()}return}
-  const x=S.sales.find(x=>x.id===b.dataset.id);if(!x)return;
+  const x=S.sales.concat(S.qoSales).find(x=>x.id===b.dataset.id);if(!x)return;
   if(delLeft(x)<=0){toast("Suppression impossible : le délai de 3 minutes est passé");renderSaleList();return}
-  S.sales=S.sales.filter(y=>y.id!==x.id);cloud("del",x.id);save();renderAll();toast("Vente supprimée")};
+  if(x.qo)S.qoSales=S.qoSales.filter(y=>y.id!==x.id);else{S.sales=S.sales.filter(y=>y.id!==x.id);cloud("del",x.id)}save();renderAll();toast("Vente supprimée")};
 setInterval(()=>{const bs=document.querySelectorAll("#saleList .del[data-id]");if(!bs.length)return;let gone=false;
-  for(const b of bs){const x=S.sales.find(x=>x.id===b.dataset.id),l=x?delLeft(x):0;if(l<=0)gone=true;else b.querySelector("small").textContent=mmss(l)}
+  for(const b of bs){const x=S.sales.concat(S.qoSales).find(x=>x.id===b.dataset.id),l=x?delLeft(x):0;if(l<=0)gone=true;else b.querySelector("small").textContent=mmss(l)}
   if(gone)renderSaleList()},1000);
 // ---- Liste et recherche des ventes ----
 let listScope="today",listLimit=50,openSale=null;
@@ -503,7 +528,7 @@ function saleMatches(x,q){
 function hl(text,q){text=esc(text||"");if(!q)return text;const w=q.split(" ").filter(x=>x.length>1).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
   if(!w.length)return text;try{return text.replace(new RegExp("("+w.join("|")+")","gi"),"<mark>$1</mark>")}catch(e){return text}}
 function renderSaleList(){
-  const q=nq($("q").value),all=S.sales.slice().sort((a,b)=>b.ts-a.ts);
+  const q=nq($("q").value),all=S.sales.concat(S.qoSales).sort((a,b)=>b.ts-a.ts);
   let L=q?all.filter(x=>saleMatches(x,q)):listScope==="today"?all.filter(x=>x.pdv===S.pdv&&dkey(x.ts)===dkey(new Date())):all;
   setPressed($("listScope"),listScope);
   $("listInfo").textContent=q?`${L.length} vente${L.length>1?"s":""} trouvée${L.length>1?"s":""} pour « ${$("q").value.trim()} » (toutes dates)`:
@@ -514,13 +539,13 @@ function renderSaleList(){
     if((q||listScope==="all")&&day!==last){last=day;html+=`<li class="dayhead">${new Date(x.ts).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</li>`}
     const open=openSale===x.id;
     html+=`<li class="sale" data-id="${x.id}" aria-expanded="${open}"><span class="dot" style="background:${COLORS[x.color].hex}"></span>
-    <span class="meta"><b>${M(x.model).name} · ${COLORS[x.color].name}</b><span>${new Date(x.ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · ${hl(x.client,q)}${x.example?" (exemple)":""}${x.serial?" · "+hl(fmtSerial(x.serial),q):""}</span></span>
-    <span class="chip ${x.cat!=="full"?"mgm":""}">${x.cat==="mgm"?"MGM":x.cat==="ref"?"REF ×"+x.vouchers:"FULL"} · ${x.ut.toUpperCase()}</span>
+    <span class="meta"><b>${M(x.model).name} · ${COLORS[x.color].name}</b><span>${new Date(x.ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · ${hl(x.client,q)}${x.example?" (exemple)":""}${x.qo?" · QO "+esc(x.qo)+" @ "+esc(x.qoPos):""}${x.serial?" · "+hl(fmtSerial(x.serial),q):""}</span></span>
+    <span class="chip ${x.cat!=="full"?"mgm":""}">${x.qo?"QO · ":""}${x.cat==="mgm"?"MGM":x.cat==="ref"?"REF ×"+x.vouchers:"FULL"} · ${x.ut.toUpperCase()}</span>
     ${delLeft(x)>0?`<button class="del" data-id="${x.id}" aria-label="Supprimer cette vente (possible encore ${mmss(delLeft(x))})" title="Suppression possible pendant 3 minutes">×<small>${mmss(delLeft(x))}</small></button>`:""}
     ${open?`<dl class="det"><dt>Client</dt><dd>${esc(x.client||"—")}</dd><dt>Téléphone</dt><dd>${esc(x.phone?x.phone.replace(/^(\d{2})(\d{3})(\d{3})$/,"$1 $2 $3"):"—")}</dd>
       <dt>E-mail</dt><dd>${esc(x.email||"—")}</dd><dt>N° de série</dt><dd>${esc(x.serial?fmtSerial(x.serial):"—")}</dd>
       <dt>Vente</dt><dd>${x.cat==="mgm"?"MGM (−10 %)"+(x.parrain?", parrain "+esc(x.parrain):""):x.cat==="ref"?`Referral, ${x.vouchers} bon${x.vouchers>1?"s":""} (${x.vouchers*30} DT)`:"Full price"} · ${x.ut.toUpperCase()}</dd>
-      <dt>Lieu, date</dt><dd>${esc(x.pdv)} · ${new Date(x.ts).toLocaleString("fr-FR",{dateStyle:"medium",timeStyle:"short"})}${x.imported?" · importée":""}</dd></dl>`:""}</li>`;
+      ${x.qo?`<dt>Quick ordering</dt><dd>Vendu par ${esc(x.qo)} à ${esc(x.qoPos)} (hors ventes officielles)</dd>`:""}<dt>Lieu, date</dt><dd>${esc(x.qo?x.qoPos:x.pdv)} · ${new Date(x.ts).toLocaleString("fr-FR",{dateStyle:"medium",timeStyle:"short"})}${x.imported?" · importée":""}</dd></dl>`:""}</li>`;
   }
   $("saleList").innerHTML=html||`<li><span class="meta"><b>${q?"Aucune vente trouvée":listScope==="today"?"Aucune vente aujourd'hui":"Aucune vente enregistrée"}</b><span>${q?"Essaie avec une partie du nom, les derniers chiffres du téléphone ou du n° de série.":"Enregistre une vente dans l'onglet Vendre."}</span></span></li>`;
   $("more").hidden=L.length<=listLimit;$("more").textContent=`Afficher plus (${L.length-listLimit} restantes)`;
@@ -537,6 +562,8 @@ function stockOf(pdv){
   const st=JSON.parse(JSON.stringify(S.base[pdv]));
   for(const a of S.arrivals.filter(a=>a.pdv===pdv))for(const it of a.items)st[it.model][it.color]+=it.qty;
   for(const x of S.sales.filter(x=>x.pdv===pdv))st[x.model][x.color]--;
+  for(const o of S.qo.filter(o=>o.pdv===pdv))for(const it of o.items)st[it.model][it.color]-=it.qty;
+  for(const t of S.qoRet.filter(t=>t.pdv===pdv))st[t.model][t.color]+=t.qty;
   const adj=S.adjust[pdv]||{}; for(const k in adj){const[m,c]=k.split(".");st[m][c]+=adj[k]}
   return st;
 }
@@ -549,7 +576,46 @@ function renderStock(){
 }
 $("invTables").onchange=e=>{const i=e.target;if(!i.dataset.m)return;const cur=stockOf(S.pdv)[i.dataset.m][i.dataset.c], v=parseInt(i.value)||0;
   S.adjust[S.pdv]=S.adjust[S.pdv]||{};const k=i.dataset.m+"."+i.dataset.c;S.adjust[S.pdv][k]=(S.adjust[S.pdv][k]||0)+(v-cur);save();renderAll();toast("Stock corrigé")};
-$("stockKind").onclick=e=>{const b=e.target.closest("button");if(!b)return;setPressed($("stockKind"),b.dataset.v);$("invBox").hidden=b.dataset.v!=="inv";$("arrBox").hidden=b.dataset.v!=="arr";$("cmdBox").hidden=b.dataset.v!=="cmd"};
+$("stockKind").onclick=e=>{const b=e.target.closest("button");if(!b)return;setPressed($("stockKind"),b.dataset.v);$("invBox").hidden=b.dataset.v!=="inv";$("arrBox").hidden=b.dataset.v!=="arr";$("cmdBox").hidden=b.dataset.v!=="cmd";$("qoBox").hidden=b.dataset.v!=="qo";if(b.dataset.v==="qo")renderQo()};
+// ---- Quick ordering : appareils confiés à un collègue, vendus ailleurs, hors ventes officielles ----
+let saleMode="me";
+function qoBal(who){const b={};
+  for(const o of S.qo.filter(o=>o.pdv===S.pdv&&o.who===who))for(const it of o.items)b[it.model+"."+it.color]=(b[it.model+"."+it.color]||0)+it.qty;
+  for(const x of S.qoSales.filter(x=>x.pdv===S.pdv&&x.qo===who))b[x.model+"."+x.color]=(b[x.model+"."+x.color]||0)-1;
+  for(const t of S.qoRet.filter(t=>t.pdv===S.pdv&&t.who===who))b[t.model+"."+t.color]=(b[t.model+"."+t.color]||0)-t.qty;
+  return b}
+const qoWhos=()=>[...new Set(S.qo.filter(o=>o.pdv===S.pdv).map(o=>o.who))];
+const sum=o=>Object.values(o).reduce((a,b)=>a+b,0);
+function qoTotals(who){const f=x=>x.pdv===S.pdv&&(!who||(x.who||x.qo)===who);
+  const out=S.qo.filter(f).reduce((a,o)=>a+o.items.reduce((s,i)=>s+i.qty,0),0),sold=S.qoSales.filter(f).length,ret=S.qoRet.filter(f).reduce((a,t)=>a+t.qty,0);
+  return {out,sold,ret,left:out-sold-ret}}
+function renderQo(){
+  if(!$("qoTables").childElementCount)$("qoTables").innerHTML=ARR_ORDER.map(id=>{const m=M(id);return `<table class="stock"><tr><th colspan="2">${m.name}</th></tr>${m.colors.map(c=>`<tr><td>${COLORS[c].name}</td><td class="q"><input type="number" inputmode="numeric" min="0" data-m="${id}" data-c="${c}" placeholder="0" aria-label="Sortie QO ${m.name} ${COLORS[c].name}"></td></tr>`).join("")}</table>`}).join("");
+  const T=qoTotals();
+  $("qoTiles").innerHTML=[["Sortis",T.out],["Vendus",T.sold],["Chez les collègues",T.left],["Rendus",T.ret]].map(([l,v])=>`<div class="tile"><span>${l}</span><b>${v}</b></div>`).join("");
+  const whos=qoWhos();
+  $("qoNames").innerHTML=whos.map(w=>`<option value="${esc(w)}">`).join("");
+  $("qoList").innerHTML=whos.length?whos.map(w=>{const t=qoTotals(w),b=qoBal(w),rows=Object.entries(b).filter(([k,n])=>n>0);
+    return `<div class="sched"><div class="top"><b>${esc(w)}</b><span class="hint">${t.out} sortis · ${t.sold} vendus · ${t.left} restants</span></div>
+    ${rows.length?`<table class="stock">${rows.map(([k,n])=>{const[m,c]=k.split(".");return `<tr><td>${M(m).name} · ${COLORS[c].name}</td><td class="q"><b>${n}</b> <button class="btn ghost" style="padding:4px 10px;width:auto" data-ret="${esc(w)}|${k}">Retour 1</button></td></tr>`}).join("")}</table>`:`<p class="hint">Tout est vendu ou rendu.</p>`}</div>`}).join(""):`<p class="hint">Aucune sortie Quick ordering pour l'instant.</p>`;
+}
+$("saveQo").onclick=()=>{const who=$("qoName").value.trim();
+  const items=[...$("qoTables").querySelectorAll("input")].map(i=>({model:i.dataset.m,color:i.dataset.c,qty:parseInt(i.value)||0})).filter(x=>x.qty>0);
+  if(!who){toast("Indique le nom du collègue");return} if(!items.length){toast("Saisis au moins une quantité");return}
+  S.qo.push({id:newId(),pdv:S.pdv,who,ts:Date.now(),items});$("qoTables").querySelectorAll("input").forEach(i=>i.value="");$("qoName").value="";
+  save();renderAll();renderQo();toast(`Sortie QO enregistrée : ${items.reduce((a,i)=>a+i.qty,0)} appareil(s) pour ${who}`)};
+$("qoList").onclick=e=>{const b=e.target.closest("[data-ret]");if(!b)return;const[w,k]=b.dataset.ret.split("|"),[m,c]=k.split(".");
+  S.qoRet.push({id:newId(),pdv:S.pdv,who:w,model:m,color:c,qty:1,ts:Date.now()});save();renderAll();renderQo();toast(`Retour : ${M(m).name} ${COLORS[c].name} remis en stock`)};
+function renderQoFields(){const qo=saleMode==="qo";$("qoFields").hidden=!qo;setPressed($("saleMode"),saleMode);
+  $("save").textContent=qo?"Enregistrer la vente QO":"Enregistrer la vente";if(!qo)return;
+  const whos=qoWhos(),cur=$("qoWho").value;
+  $("qoWho").innerHTML=whos.length?whos.map(w=>`<option value="${esc(w)}">${esc(w)} · ${qoTotals(w).left} restant(s)</option>`).join(""):`<option value="">Aucune sortie QO</option>`;
+  if(whos.includes(cur))$("qoWho").value=cur;
+  $("qoPosList").innerHTML=[...new Set(S.qoSales.map(x=>x.qoPos))].map(p=>`<option value="${esc(p)}">`).join("");
+  const w=$("qoWho").value,rows=w?Object.entries(qoBal(w)).filter(([k,n])=>n>0):[];
+  $("qoLeft").textContent=!whos.length?"Enregistre d'abord une sortie dans Stock › QO.":rows.length?"Chez "+w+" : "+rows.map(([k,n])=>{const[m,c]=k.split(".");return `${n} ${M(m).sale} ${COLORS[c].short}`}).join(", "):`${w} n'a plus d'appareil en QO.`}
+$("saleMode").onclick=e=>{const b=e.target.closest("button");if(!b)return;saleMode=b.dataset.v;renderQoFields()};
+$("qoWho").onchange=renderQoFields;
 $("saveCmd").onclick=()=>{
   const items=[...$("cmdTables").querySelectorAll("input")].map(i=>({model:i.dataset.m,color:i.dataset.c,qty:parseInt(i.value)||0})).filter(x=>x.qty>0);
   if(!items.length&&!$("sac").checked){toast("Saisis au moins une quantité");return}
@@ -590,10 +656,17 @@ function reportCommande(){
   const blocks=ARR_ORDER.map(id=>c.items.filter(x=>x.model===id).map(x=>`${x.qty} ${M(id).arr} ${COLORS[x.color].arr}`)).filter(b=>b.length);
   return [`Salut commande ${c.pdv} :`,blocks.map(b=>b.join("\n")).join("\n\n")+(c.sac?"\n+++Sac":""),"","Bonne journée"].join("\n");
 }
+function reportQO(){
+  const d=S.qoSales.filter(x=>x.pdv===S.pdv&&dkey(x.ts)===dkey(new Date()));
+  const lines=cat=>{const g={};for(const x of d.filter(x=>x.cat===cat)){const k=`${M(x.model).sale} ${COLORS[x.color].short} (${x.ut})`+(cat==="ref"?` (${x.vouchers} referral)`:"")+` - ${x.qoPos}`;g[k]=(g[k]||0)+1}
+    return Object.entries(g).map(([k,n])=>`${pad(n)} ${k}`)};
+  const full=lines("full"),mgm=lines("mgm"),ref=lines("ref");
+  return ["Bonsoir",`Quick ordering ${S.pdv} ${d.length} vendu`,...(full.length?["Full price",...full]:[]),...(mgm.length?["Mgm",...mgm]:[]),...(ref.length?["Referral",...ref]:[]),"Bonne soirée."].join("\n");
+}
 function renderReport(){
-  const t=repKind==="ventes"?reportVentes():repKind==="stock"?reportStock():repKind==="commande"?reportCommande():reportArrivage();
+  const t=repKind==="ventes"?reportVentes():repKind==="stock"?reportStock():repKind==="commande"?reportCommande():repKind==="qo"?reportQO():reportArrivage();
   $("report").textContent=t; renderSend();
-  $("repHint").textContent=repKind==="ventes"?"Dans l'app installée, une notification arrivera à l'heure programmée, même app fermée. Dans cette démo, le rappel s'affiche en haut de l'écran quand la page est ouverte."
+  $("repHint").textContent=repKind==="qo"?"Ventes Quick ordering du jour (faites par tes collègues), avec le point de vente de chaque appareil. À envoyer dans le groupe Quick ordering.":repKind==="ventes"?"Dans l'app installée, une notification arrivera à l'heure programmée, même app fermée. Dans cette démo, le rappel s'affiche en haut de l'écran quand la page est ouverte."
     :repKind==="stock"?"Rapport du lundi et du samedi, envoyé dans le groupe stock. Aucune donnée client.":repKind==="commande"?"Demande d'appareils à envoyer dans le groupe des commandes.":"Rapport envoyé dans le groupe des arrivages après chaque livraison.";
 }
 $("repKind").onclick=e=>{const b=e.target.closest("button");if(b){repKind=b.dataset.v;setPressed($("repKind"),repKind);renderReport()}};
@@ -615,7 +688,7 @@ $("wa").onclick=()=>{if(!$("wa").dataset.copy)return;const t=$("report").textCon
   try{navigator.clipboard.writeText(t).then(()=>toast("Message copié, colle-le dans le groupe"),()=>toast("Copie refusée : utilise le bouton Copier"))}catch(e){toast("Copie refusée : utilise le bouton Copier")}};
 $("grp").onchange=()=>{S.groupFor[repKind]=$("grp").value;save();renderSend()};
 $("grpManage").onclick=()=>{const h=!$("grpEditor").hidden;$("grpEditor").hidden=h;$("grpManage").setAttribute("aria-expanded",!h);renderGroups()};
-const KIND_LABEL={ventes:"Ventes",stock:"Stock",arrivage:"Arrivage",commande:"Commande"};
+const KIND_LABEL={ventes:"Ventes",stock:"Stock",arrivage:"Arrivage",commande:"Commande",qo:"Quick ordering"};
 function renderGroups(){
   $("grpList").innerHTML=S.groups.map(g=>`<div class="counter" style="flex-direction:column;align-items:stretch;gap:8px">
     <div class="row"><input id="gn-${g.id}" data-id="${g.id}" data-f="name" value="${esc(g.name)}" aria-label="Nom du groupe" style="flex:4"><button class="del" data-del="${g.id}" aria-label="Supprimer ce groupe" style="flex:none">×</button></div>
@@ -707,7 +780,8 @@ function renderStats(){
   $("goalStats").innerHTML=R.year?yearGoalHtml(R.a.getFullYear()):goalHtml(g.getFullYear(),g.getMonth());
   const T=[["Vendu","total"],["LAS","las"],["LAU","lau"],["MGM","mgm"],["Referral","ref"],["GT","gt"]];
   renderBoard(R,cur.las);
-  $("tiles").innerHTML=T.map(([l,k])=>`<div class="tile"><span>${l}</span><b>${cur[k]}</b>${delta(cur[k],prev[k])}</div>`).join("");
+  const qoN=(a,b)=>S.qoSales.filter(x=>x.pdv===S.pdv&&x.ts>=+a&&x.ts<+b).length;
+  $("tiles").innerHTML=T.map(([l,k])=>`<div class="tile"><span>${l}</span><b>${cur[k]}</b>${delta(cur[k],prev[k])}</div>`).join("")+`<div class="tile"><span>Quick ordering</span><b>${qoN(R.a,R.b)}</b>${delta(qoN(R.a,R.b),qoN(R.pa,R.a))}</div>`;
   // graphique
   const data=R.slots.map(sl=>{const L=cur.L.filter(x=>x.ts>=+sl.a&&x.ts<+sl.b);return {l:sl.l,las:L.filter(x=>x.ut==="las").length,lau:L.filter(x=>x.ut==="lau").length}});
   const goalLine=R.year?S.monthGoal:null,max=Math.max(1,...data.map(d=>d.las+d.lau),goalLine||0),W=320,H=150,top=12,bot=20,n=data.length,bw=(W-28)/n;
@@ -841,10 +915,11 @@ $("impGo").onclick=()=>{
   for(const d in impParsed.gts){S.gtd[pdv+"|"+d]=impParsed.gts[d];cloud("gt",pdv,d,impParsed.gts[d])}
   save();renderAll();toast(`${n} vente${n>1?"s":""} importée${n>1?"s":""}`);$("impText").value="";$("impPrev").hidden=true;$("impGo").hidden=true;impParsed=null;
 };
-function renderAll(){renderForm();renderDay();renderStock();renderReport();renderStats()}
+function renderAll(){renderForm();renderDay();renderStock();renderReport();renderStats();renderQoFields();if(!$("qoBox").hidden)renderQo()}
 renderAll();
 // ---- Programmation ----
 if(!S.sched){S.sched={ventes:{on:true,time:"20:30",days:[1,2,3,4,5,6,0]},stock:{on:true,time:"13:00",days:[1,6]},arrivage:{on:false,time:"16:00",days:[]},commande:{on:false,time:"10:00",days:[1,4]}};S.sent={};save()}
+if(!S.sched.qo){S.sched.qo={on:false,time:"20:30",days:[1,2,3,4,5,6,0]};save()}
 const DAYS=[[1,"L"],[2,"M"],[3,"M"],[4,"J"],[5,"V"],[6,"S"],[0,"D"]], DAYN=["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
 const dstr=d=>d.toDateString();
 function nextRun(k){const c=S.sched[k];if(!c.on||!c.days.length)return null;const[h,m]=c.time.split(":").map(Number),now=new Date();
@@ -871,7 +946,7 @@ $("wa").addEventListener("click",markSent);$("waOther").addEventListener("click"
 // ---- Envoi automatique (APK Android : service d'accessibilité qui choisit le groupe et appuie sur Envoyer) ----
 const AS=(()=>{const C=window.Capacitor;try{if(C&&C.isNativePlatform&&C.isNativePlatform()&&C.getPlatform()==="android"&&C.nativePromise)return{call:(m,o)=>C.nativePromise("AutoSend",m,o||{})}}catch(e){}return null})();
 let asStat=null;
-const reportFor=k=>k==="ventes"?reportVentes():k==="stock"?reportStock():k==="commande"?reportCommande():reportArrivage();
+const reportFor=k=>k==="ventes"?reportVentes():k==="stock"?reportStock():k==="commande"?reportCommande():k==="qo"?reportQO():reportArrivage();
 const groupOfKind=k=>S.groups.find(g=>g.id===S.groupFor[k]);
 async function asRefresh(){if(!AS)return;try{asStat=await AS.call("status")}catch(e){asStat=null}
   const l=asStat&&asStat.last;if(l&&l.at&&l.at>(S.autoSeen||0)){S.autoSeen=l.at;
