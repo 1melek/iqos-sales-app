@@ -119,14 +119,15 @@
   async function pull() {
     const rows = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await sb.from("sales").select("*,customers(nom,prenom)").eq("user_id", me.id).order("vendu_le").range(from, from + 999);
+      const { data, error } = await sb.from("sales").select("*,customers(nom,prenom,telephone,email)").eq("user_id", me.id).order("vendu_le").range(from, from + 999);
       if (error) throw error; rows.push(...data); if (data.length < 1000) break;
     }
     const pending = new Set(S.queue.filter(q => q.op === "sale" || q.op === "sales").flatMap(q => q.op === "sale" ? [q.sale.id] : q.sales.map(x => x.id)));
     const local = S.sales.filter(x => pending.has(x.id));
+    const createdLocal = {}; for (const x of S.sales) if (x.created) createdLocal[x.id] = x.created;
     S.sales = rows.map(r => ({
       id: r.id, pdv: pdvById[r.pdv_id] || "?", model: r.model_id, color: r.color_id, cat: r.categorie, ut: r.user_type,
-      vouchers: r.bons_referral, parrain: r.parrain || "", serial: r.code_unique || "", ts: Date.parse(r.vendu_le), imported: r.importe,
+      vouchers: r.bons_referral, parrain: r.parrain || "", phone: r.customers && r.customers.telephone || "", email: r.customers && r.customers.email || "", serial: r.code_unique || "", ts: Date.parse(r.vendu_le), created: createdLocal[r.id] || Date.parse(r.cree_le), imported: r.importe,
       client: r.customers ? [r.customers.prenom, r.customers.nom].filter(Boolean).join(" ") || "Client sans fiche" : (r.importe ? "Import" : "Client sans fiche")
     })).concat(local);
     const { data: gts } = await sb.from("get_try_logs").select("pdv_id,jour,nombre").eq("user_id", me.id);

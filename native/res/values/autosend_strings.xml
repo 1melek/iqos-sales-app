@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="autosend_label">Sales Expert : envoi automatique WhatsApp</string>
+    <string name="autosend_desc">Permet à Sales Expert d\'envoyer tes rapports dans le groupe WhatsApp choisi, à l\'heure programmée. Le service n\'agit que dans WhatsApp et seulement quand l\'app lance un envoi. Il ne lit ni ne garde tes messages.</string>
+</resources>

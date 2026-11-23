@@ -27,6 +27,7 @@ jobs:
           npm run build:www
           [ -d android ] || npx cap add android
           npx cap sync android
+          node scripts/patch-android.js
       - name: Compiler l'APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon

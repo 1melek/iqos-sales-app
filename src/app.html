@@ -77,7 +77,12 @@ ul.list .meta{flex:1;min-width:0}ul.list .meta b{display:block;font-weight:600}u
 .scanres{font-size:13px;color:var(--muted);word-break:break-all}
 .scanres b{color:var(--fg)}
 .scanres.ok b{color:var(--good)}
-.del{border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px 6px}
+ul.list li.dayhead{background:var(--code-bg);padding:6px 12px;font-size:12px;font-weight:600;color:var(--muted);text-transform:capitalize}
+ul.list li.sale{flex-wrap:wrap;cursor:pointer}
+ul.list .det{flex-basis:100%;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;padding:8px 0 2px 34px}
+ul.list .det dt{color:var(--muted)}ul.list .det dd{margin:0;word-break:break-word}
+mark{background:var(--warn-soft);color:inherit;border-radius:3px}
+.del{border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px 6px;display:flex;flex-direction:column;align-items:center;line-height:1}.del small{font-size:10px;font-variant-numeric:tabular-nums;margin-top:2px}
 pre.report{margin:0;background:var(--code-bg);border:1px solid var(--line);border-radius:14px;padding:14px;font-family:var(--f-mono);font-size:13.5px;white-space:pre-wrap;word-break:break-word}
 .hint{font-size:12.5px;color:var(--muted);margin:0}
 table.stock{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
@@ -200,7 +205,12 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
       </div>
       <div class="row" style="align-items:center"><span class="label" style="flex:2">Objectif du jour</span>
         <div class="step" style="flex:none"><button id="goalMinus" aria-label="Baisser l'objectif">−</button><output id="goalOut">6</output><button id="goalPlus" aria-label="Monter l'objectif">+</button></div></div>
-      <div class="group"><span class="label">Ventes du jour</span><ul class="list" id="saleList"></ul></div>
+      <div class="group"><span class="label">Mes ventes</span>
+        <div class="seg" id="listScope"><button data-v="today" aria-pressed="true">Aujourd'hui</button><button data-v="all" aria-pressed="false">Toutes mes ventes</button></div>
+        <input id="q" type="search" placeholder="Nom, téléphone, e-mail ou n° de série" aria-label="Rechercher une vente" autocomplete="off">
+        <p class="hint" id="listInfo"></p>
+        <ul class="list" id="saleList"></ul>
+        <button class="btn ghost" id="more" hidden>Afficher plus</button></div>
     </section>
 
     <!-- RAPPORTS -->
@@ -212,7 +222,7 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
           <button class="btn ghost" id="grpManage" style="flex:1;padding:10px" aria-expanded="false">Groupes</button></div>
         <a class="btn wa" id="wa" target="_blank" rel="noopener">Envoyer</a>
         <p class="hint" id="waHint"></p>
-        <div class="row"><button class="btn ghost" id="copy">Copier</button><a class="btn ghost" id="waOther" target="_blank" rel="noopener">Autre groupe…</a></div>
+        <div class="row"><button class="btn ghost" id="copy">Copier</button><a class="btn ghost" id="waOther" target="_blank" rel="noopener">Choisir le groupe</a></div>
       </div>
       <div class="sched">
         <div class="top"><b id="schedTitle">Programmation</b><input type="checkbox" class="switch" id="schedOn" aria-label="Activer la programmation"></div>
@@ -221,10 +231,15 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
           <div class="row" style="align-items:center"><label class="label" for="schedTime" style="flex:2">Heure du rappel</label><input type="time" id="schedTime" style="flex:none"></div>
         </div>
         <p class="hint" id="schedNext"></p>
+        <div id="autoBox" class="group" hidden>
+          <div class="top"><b>Envoi automatique</b><input type="checkbox" class="switch" id="autoOn" aria-label="Envoyer automatiquement à l'heure programmée"></div>
+          <p class="hint" id="autoHint"></p>
+          <div class="row" id="autoBtns"></div>
+        </div>
       </div>
       <div class="group" id="grpEditor" hidden>
         <span class="label">Mes groupes WhatsApp</span>
-        <p class="hint">Colle le lien d'invitation du groupe (WhatsApp › infos du groupe › Inviter via lien). Il ouvre directement le bon groupe.</p>
+        <p class="hint">Facultatif. Sans lien, « Choisir le groupe » ouvre WhatsApp avec le message prêt et tu touches le groupe. Avec un lien, l'app ouvre directement le bon groupe. Le lien n'est visible que pour les admins du groupe : infos du groupe › Inviter au groupe via un lien (sinon demande-le à l'admin).</p>
         <div id="grpList" class="group"></div>
         <button class="btn ghost" id="grpAdd">Ajouter un groupe</button>
       </div>
@@ -283,7 +298,7 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
 
 <nav class="tabs" aria-label="Sections"><div>
   <button data-tab="vendre" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Vendre</button>
-  <button data-tab="jour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2" stroke-linecap="round"/></svg>Aujourd'hui</button>
+  <button data-tab="jour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2" stroke-linecap="round"/></svg>Mes ventes</button>
   <button data-tab="rapport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>Rapports</button>
   <button data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>Stats</button>
   <button data-tab="stock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Stock</button>
@@ -445,8 +460,8 @@ $("scanFile").onchange=()=>{
 };
 $("save").onclick=()=>{
   if(!$("consent").checked&&($("nom").value||$("tel").value||$("email").value)){toast("Coche le consentement du client");return}
-  const sale={id:newId(),pdv:S.pdv,model:form.model,color:form.color,cat:form.cat,ut:form.ut,ts:Date.now(),
-    client:[$("prenom").value,$("nom").value].filter(Boolean).join(" ")||"Client sans fiche",parrain:form.cat==="mgm"?$("parrain").value:"",vouchers:form.cat==="ref"?form.vouchers:0,code:scan?scan.text:"",serial:scan?scan.serial:""};
+  const sale={id:newId(),pdv:S.pdv,model:form.model,color:form.color,cat:form.cat,ut:form.ut,ts:Date.now(),created:Date.now(),
+    client:[$("prenom").value,$("nom").value].filter(Boolean).join(" ")||"Client sans fiche",phone:$("tel").value.replace(/\D/g,""),email:$("email").value.trim(),parrain:form.cat==="mgm"?$("parrain").value:"",vouchers:form.cat==="ref"?form.vouchers:0,code:scan?scan.text:"",serial:scan?scan.serial:""};
   S.sales.push(sale);
   const cust=($("nom").value||$("prenom").value||$("tel").value||$("email").value)?{id:newId(),nom:$("nom").value,prenom:$("prenom").value,telephone:$("tel").value,email:$("email").value,date_naissance:$("naiss").value||null,consentement_le:$("consent").checked?new Date().toISOString():null}:null;
   cloud("sale",sale,cust);
@@ -464,12 +479,55 @@ function renderDay(){
   $("goalOut").textContent=S.goal; const p=Math.min(1,total/S.goal);
   $("ringArc").setAttribute("stroke-dasharray",`${(p*264).toFixed(1)} 264`); $("ringArc").setAttribute("stroke",p>=1?"var(--good)":"var(--accent)");
   $("ringTxt").textContent=`${total}/${S.goal}`;
-  $("saleList").innerHTML=d.length?d.slice().reverse().map(x=>`<li><span class="dot" style="background:${COLORS[x.color].hex}"></span>
-    <span class="meta"><b>${M(x.model).name} · ${COLORS[x.color].name}</b><span>${new Date(x.ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · ${esc(x.client)}${x.example?" (exemple)":""}${x.parrain?" · parrain "+esc(x.parrain):""}${x.serial?" · "+esc(fmtSerial(x.serial)):""}</span></span>
-    <span class="chip ${x.cat!=="full"?"mgm":""}">${x.cat==="mgm"?"MGM":x.cat==="ref"?"REF ×"+x.vouchers:"FULL"} · ${x.ut.toUpperCase()}</span>
-    <button class="del" data-id="${x.id}" aria-label="Supprimer cette vente">×</button></li>`).join(""):`<li><span class="meta"><b>Aucune vente aujourd'hui</b><span>Enregistre une vente dans l'onglet Vendre.</span></span></li>`;
+  renderSaleList();
 }
-$("saleList").onclick=e=>{const b=e.target.closest(".del");if(b){S.sales=S.sales.filter(x=>x.id!==b.dataset.id);cloud("del",b.dataset.id);save();renderAll();toast("Vente supprimée")}};
+// Une vente ne peut être supprimée que pendant 3 minutes après sa saisie
+const DEL_MS=3*60000, delLeft=x=>x.created?DEL_MS-(Date.now()-x.created):0, mmss=ms=>{const t=Math.ceil(ms/1000);return Math.floor(t/60)+":"+String(t%60).padStart(2,"0")};
+$("saleList").onclick=e=>{const b=e.target.closest(".del");if(!b){const li=e.target.closest("li.sale");if(li){openSale=openSale===li.dataset.id?null:li.dataset.id;renderSaleList()}return}
+  const x=S.sales.find(x=>x.id===b.dataset.id);if(!x)return;
+  if(delLeft(x)<=0){toast("Suppression impossible : le délai de 3 minutes est passé");renderSaleList();return}
+  S.sales=S.sales.filter(y=>y.id!==x.id);cloud("del",x.id);save();renderAll();toast("Vente supprimée")};
+setInterval(()=>{const bs=document.querySelectorAll("#saleList .del[data-id]");if(!bs.length)return;let gone=false;
+  for(const b of bs){const x=S.sales.find(x=>x.id===b.dataset.id),l=x?delLeft(x):0;if(l<=0)gone=true;else b.querySelector("small").textContent=mmss(l)}
+  if(gone)renderSaleList()},1000);
+// ---- Liste et recherche des ventes ----
+let listScope="today",listLimit=50,openSale=null;
+const nq=t=>norm(String(t||"")).replace(/\s+/g," ").trim();
+function saleMatches(x,q){
+  const digits=q.replace(/\D/g,""),compact=q.replace(/[\s-]/g,"");
+  if(digits.length>=3&&(x.phone||"").includes(digits))return true;
+  if(compact.length>=3&&nq(x.serial).replace(/\s/g,"").includes(compact))return true;
+  const hay=nq([x.client,x.email,x.parrain,M(x.model).name,COLORS[x.color].name,COLORS[x.color].short,x.pdv].join(" "));
+  return q.split(" ").every(w=>hay.includes(w));
+}
+function hl(text,q){text=esc(text||"");if(!q)return text;const w=q.split(" ").filter(x=>x.length>1).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+  if(!w.length)return text;try{return text.replace(new RegExp("("+w.join("|")+")","gi"),"<mark>$1</mark>")}catch(e){return text}}
+function renderSaleList(){
+  const q=nq($("q").value),all=S.sales.slice().sort((a,b)=>b.ts-a.ts);
+  let L=q?all.filter(x=>saleMatches(x,q)):listScope==="today"?all.filter(x=>x.pdv===S.pdv&&dkey(x.ts)===dkey(new Date())):all;
+  setPressed($("listScope"),listScope);
+  $("listInfo").textContent=q?`${L.length} vente${L.length>1?"s":""} trouvée${L.length>1?"s":""} pour « ${$("q").value.trim()} » (toutes dates)`:
+    listScope==="all"?`${L.length} vente${L.length>1?"s":""} au total, de la plus récente à la plus ancienne. Touche une vente pour voir le détail.`:"Touche une vente pour voir le client et le n° de série.";
+  const shown=L.slice(0,listLimit);let last="",html="";
+  for(const x of shown){
+    const day=dkey(x.ts);
+    if((q||listScope==="all")&&day!==last){last=day;html+=`<li class="dayhead">${new Date(x.ts).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</li>`}
+    const open=openSale===x.id;
+    html+=`<li class="sale" data-id="${x.id}" aria-expanded="${open}"><span class="dot" style="background:${COLORS[x.color].hex}"></span>
+    <span class="meta"><b>${M(x.model).name} · ${COLORS[x.color].name}</b><span>${new Date(x.ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · ${hl(x.client,q)}${x.example?" (exemple)":""}${x.serial?" · "+hl(fmtSerial(x.serial),q):""}</span></span>
+    <span class="chip ${x.cat!=="full"?"mgm":""}">${x.cat==="mgm"?"MGM":x.cat==="ref"?"REF ×"+x.vouchers:"FULL"} · ${x.ut.toUpperCase()}</span>
+    ${delLeft(x)>0?`<button class="del" data-id="${x.id}" aria-label="Supprimer cette vente (possible encore ${mmss(delLeft(x))})" title="Suppression possible pendant 3 minutes">×<small>${mmss(delLeft(x))}</small></button>`:""}
+    ${open?`<dl class="det"><dt>Client</dt><dd>${esc(x.client||"—")}</dd><dt>Téléphone</dt><dd>${esc(x.phone?x.phone.replace(/^(\d{2})(\d{3})(\d{3})$/,"$1 $2 $3"):"—")}</dd>
+      <dt>E-mail</dt><dd>${esc(x.email||"—")}</dd><dt>N° de série</dt><dd>${esc(x.serial?fmtSerial(x.serial):"—")}</dd>
+      <dt>Vente</dt><dd>${x.cat==="mgm"?"MGM (−10 %)"+(x.parrain?", parrain "+esc(x.parrain):""):x.cat==="ref"?`Referral, ${x.vouchers} bon${x.vouchers>1?"s":""} (${x.vouchers*30} DT)`:"Full price"} · ${x.ut.toUpperCase()}</dd>
+      <dt>Lieu, date</dt><dd>${esc(x.pdv)} · ${new Date(x.ts).toLocaleString("fr-FR",{dateStyle:"medium",timeStyle:"short"})}${x.imported?" · importée":""}</dd></dl>`:""}</li>`;
+  }
+  $("saleList").innerHTML=html||`<li><span class="meta"><b>${q?"Aucune vente trouvée":listScope==="today"?"Aucune vente aujourd'hui":"Aucune vente enregistrée"}</b><span>${q?"Essaie avec une partie du nom, les derniers chiffres du téléphone ou du n° de série.":"Enregistre une vente dans l'onglet Vendre."}</span></span></li>`;
+  $("more").hidden=L.length<=listLimit;$("more").textContent=`Afficher plus (${L.length-listLimit} restantes)`;
+}
+$("listScope").onclick=e=>{const b=e.target.closest("button");if(b){listScope=b.dataset.v;listLimit=50;renderSaleList()}};
+$("q").oninput=()=>{listLimit=50;renderSaleList()};
+$("more").onclick=()=>{listLimit+=50;renderSaleList()};
 $("goalMinus").onclick=()=>{S.goal=Math.max(1,S.goal-1);save();renderDay()};
 $("goalPlus").onclick=()=>{S.goal++;save();renderDay()};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -778,7 +836,7 @@ $("impGo").onclick=()=>{
   if(!impParsed)return;const pdv=$("impPdv").value;let n=0;
   const added=[];for(const x of impParsed.sales.filter(x=>!x.dup)){const ts=new Date(x.date+"T18:00").getTime()+n;
     const cust=(x.client||x.phone||x.email)?{id:newId(),nom:x.client||null,telephone:x.phone||null,email:x.email||null}:null;
-    const sale={id:newId(),pdv,model:x.model,color:x.color,cat:x.cat,ut:x.ut,vouchers:x.vouchers,ts,client:x.client||"Import",imported:true,_cust:cust};S.sales.push(sale);added.push(sale);n++}
+    const sale={id:newId(),pdv,model:x.model,color:x.color,cat:x.cat,ut:x.ut,vouchers:x.vouchers,ts,created:Date.now(),client:x.client||"Import",phone:x.phone||"",email:x.email||"",imported:true,_cust:cust};S.sales.push(sale);added.push(sale);n++}
   cloud("sales",added);
   for(const d in impParsed.gts){S.gtd[pdv+"|"+d]=impParsed.gts[d];cloud("gt",pdv,d,impParsed.gts[d])}
   save();renderAll();toast(`${n} vente${n>1?"s":""} importée${n>1?"s":""}`);$("impText").value="";$("impPrev").hidden=true;$("impGo").hidden=true;impParsed=null;
@@ -799,16 +857,49 @@ function renderSched(){const c=S.sched[repKind];
   const n=nextRun(repKind);
   $("schedNext").textContent=!c.on?(repKind==="arrivage"?"Envoi manuel : le rapport est prêt après chaque arrivage enregistré.":"Envoi manuel."):
     isDue(repKind)?"C'est l'heure : ce rapport attend d'être envoyé aujourd'hui.":n?`Prochain rappel : ${dstr(n)===dstr(new Date())?"aujourd'hui":DAYN[n.getDay()]} à ${c.time}. ${S.sent[repKind]===dstr(new Date())?"Déjà envoyé aujourd'hui.":""}`:"Choisis au moins un jour.";
+  if(window.renderAuto)renderAuto();
 }
 function renderDue(){const ks=Object.keys(KIND_LABEL).filter(isDue);$("due").hidden=!ks.length;
   $("due").innerHTML=ks.map(k=>`<div><span>Rapport <b>${KIND_LABEL[k]}</b> prêt à envoyer (prévu à ${S.sched[k].time})</span><button data-k="${k}">Ouvrir</button></div>`).join("")}
 $("due").onclick=e=>{const b=e.target.closest("button");if(!b)return;repKind=b.dataset.k;setPressed($("repKind"),repKind);renderReport();go("rapport")};
-$("schedOn").onchange=()=>{S.sched[repKind].on=$("schedOn").checked;save();renderSched();renderDue()};
-$("schedTime").onchange=()=>{if($("schedTime").value){S.sched[repKind].time=$("schedTime").value;save();renderSched();renderDue()}};
+$("schedOn").onchange=()=>{S.sched[repKind].on=$("schedOn").checked;save();renderSched();renderDue();if(window.asSync)asSync()};
+$("schedTime").onchange=()=>{if($("schedTime").value){S.sched[repKind].time=$("schedTime").value;save();renderSched();renderDue();if(window.asSync)asSync()}};
 $("schedDays").onclick=e=>{const b=e.target.closest("button");if(!b)return;const d=+b.dataset.d,c=S.sched[repKind];
-  c.days=c.days.includes(d)?c.days.filter(x=>x!==d):[...c.days,d];save();renderSched();renderDue()};
-const markSent=()=>{S.sent[repKind]=dstr(new Date());save();setTimeout(()=>{renderSched();renderDue()},300)};
+  c.days=c.days.includes(d)?c.days.filter(x=>x!==d):[...c.days,d];save();renderSched();renderDue();if(window.asSync)asSync()};
+const markSent=()=>{S.sent[repKind]=dstr(new Date());save();setTimeout(()=>{renderSched();renderDue();if(window.asSync)asSync()},300)};
 $("wa").addEventListener("click",markSent);$("waOther").addEventListener("click",markSent);
+// ---- Envoi automatique (APK Android : service d'accessibilité qui choisit le groupe et appuie sur Envoyer) ----
+const AS=(()=>{const C=window.Capacitor;try{if(C&&C.isNativePlatform&&C.isNativePlatform()&&C.getPlatform()==="android"&&C.nativePromise)return{call:(m,o)=>C.nativePromise("AutoSend",m,o||{})}}catch(e){}return null})();
+let asStat=null;
+const reportFor=k=>k==="ventes"?reportVentes():k==="stock"?reportStock():k==="commande"?reportCommande():reportArrivage();
+const groupOfKind=k=>S.groups.find(g=>g.id===S.groupFor[k]);
+async function asRefresh(){if(!AS)return;try{asStat=await AS.call("status")}catch(e){asStat=null}
+  const l=asStat&&asStat.last;if(l&&l.at&&l.at>(S.autoSeen||0)){S.autoSeen=l.at;
+    if(l.ok&&KIND_LABEL[l.type]){S.sent[l.type]=dstr(new Date(l.at));toast(`Rapport ${KIND_LABEL[l.type]} envoyé automatiquement`)}
+    else if(l.type)toast(`Envoi automatique ${KIND_LABEL[l.type]||""} échoué : ${l.msg||"raison inconnue"}. Envoie-le à la main.`);
+    save();renderDue()}
+  asSync();renderAuto()}
+function asSync(){if(!AS)return;for(const k of Object.keys(KIND_LABEL)){const c=S.sched[k],n=c.on&&c.auto?nextRun(k):null;
+  (n?AS.call("schedule",{type:k,at:+n}):AS.call("cancel",{type:k})).catch(()=>{})}}
+async function asRun(k){const g=groupOfKind(k),t=reportFor(k);
+  if(!g){toast("Envoi automatique : choisis un groupe pour ce rapport");return}
+  if(/^Aucun/.test(t)){toast(`Envoi automatique ${KIND_LABEL[k]} annulé : rien à envoyer`);return}
+  try{await AS.call("send",{type:k,text:t,group:g.name})}catch(e){toast("Envoi automatique impossible")}}
+async function asPoll(){if(!AS||document.hidden)return;try{const r=await AS.call("takePending");if(r&&r.type&&KIND_LABEL[r.type]){await asRun(r.type);return}}catch(e){}asRefresh()}
+function renderAuto(){const box=$("autoBox"),c=S.sched[repKind];box.hidden=!c.on;if(!c.on)return;
+  $("autoOn").checked=!!c.auto;$("autoOn").disabled=!AS;const g=groupOfKind(repKind);let h,btn="";
+  if(!AS)h="Disponible dans l'app Android installée : à l'heure prévue, l'app ouvre WhatsApp, choisit le groupe et appuie sur Envoyer toute seule.";
+  else if(!c.auto)h="Désactivé : tu reçois seulement le rappel. Active-le pour que l'app envoie toute seule à l'heure prévue.";
+  else if(!asStat)h="Vérification du service…";
+  else if(!asStat.whatsapp)h="WhatsApp n'est pas installé sur ce téléphone.";
+  else if(!asStat.enabled){h="Une étape à faire une fois : autorise le service « Sales Expert : envoi automatique WhatsApp » dans Réglages › Accessibilité.";btn=`<button class="btn" data-as="openSettings">Ouvrir les réglages</button>`}
+  else{h=`Actif. À l'heure prévue, envoi dans « ${esc(g?g.name:"?")} ». Le nom du groupe doit être écrit exactement comme dans WhatsApp. Laisse le téléphone allumé et sans code de verrouillage, sinon l'envoi attend que tu le déverrouilles.`;
+    if(!asStat.exact){h+=" Autorise aussi les alarmes exactes pour que l'heure soit respectée.";btn=`<button class="btn ghost" data-as="openExactAlarmSettings">Autoriser les alarmes</button>`}
+    btn+=`<button class="btn ghost" data-as="test">Tester maintenant</button>`}
+  $("autoHint").textContent=h;$("autoBtns").innerHTML=btn}
+$("autoOn").onchange=()=>{S.sched[repKind].auto=$("autoOn").checked;save();asSync();renderAuto();asRefresh()};
+$("autoBtns").onclick=e=>{const b=e.target.closest("[data-as]");if(!b||!AS)return;if(b.dataset.as==="test")asRun(repKind);else AS.call(b.dataset.as).catch(()=>{})};
+if(AS){document.addEventListener("visibilitychange",()=>{if(!document.hidden)asPoll()});setInterval(asPoll,10000);setTimeout(asPoll,1500)}
 window.schedReady=true;renderSched();renderDue();setInterval(()=>{renderDue();if(!document.querySelector('[data-view="rapport"]').hidden)renderSched()},30000);
 const h=location.hash.slice(1); go(document.querySelector(`[data-view="${h}"]`)?h:"vendre");
 </script>
