@@ -4,6 +4,8 @@ const fs = require("fs"), path = require("path");
 const root = path.join(__dirname, "..");
 let body = fs.readFileSync(path.join(root, "src/app.html"), "utf8");
 body = body.replace(/<script src="https:\/\/unpkg\.com\/@zxing\/library@[^"]+"><\/script>/, '<script src="zxing.min.js"></script>');
+// Lecteur rapide multi-codes (zxing-cpp WebAssembly) en local
+body = body.replace(/<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/zxing-wasm@[^"]+"><\/script>/, '<script>window.ZXW_BASE="./";</script><script src="zxing-wasm.js"></script>');
 // Base partagée (Supabase) : uniquement dans l'APK
 body = body.replace('<script src="zxing.min.js"></script>', '<script src="zxing.min.js"></script>\n<script src="supabase.js"></script>');
 const head = `<!doctype html>

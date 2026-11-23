@@ -326,6 +326,7 @@ h2{font-family:var(--f-display);font-size:20px;margin:0;text-wrap:balance}
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/iife/reader/index.js"></script>
 <script>
 // ---- Catalogue (modifiable dans l'app finale) ----
 const COLORS={
@@ -428,6 +429,33 @@ function decodeNearBarcode(img,pts,map){
     }}
   return null;
 }
+// Lecteur rapide (zxing-cpp en WebAssembly) : lit tous les codes d'une photo d'un coup
+let zxwReady=null;
+function zxw(){if(!window.ZXingWASM)return null;if(!zxwReady){try{ZXingWASM.prepareZXingModule({overrides:{locateFile:f=>(window.ZXW_BASE||"https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/reader/")+f}})}catch(e){}zxwReady=true}return ZXingWASM}
+function imgData(img,sx,sy,sw,sh,k){const cv=document.createElement("canvas");cv.width=Math.max(1,Math.round(sw*k));cv.height=Math.max(1,Math.round(sh*k));const g=cv.getContext("2d");g.imageSmoothingQuality="high";g.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);return g.getImageData(0,0,cv.width,cv.height)}
+// Renvoie une boîte par code-barres trouvé, avec son n° de série quand le code carré est lisible : [{gtin,text}]
+async function readBoxes(img,progress){const Z=zxw();if(!Z)return null;
+  const W=img.naturalWidth,H=img.naturalHeight,boxes=[],serials=new Map(),near=(a,b)=>Math.hypot(a.cx-b.cx,a.cy-b.cy)<a.w*.6;
+  const opt={formats:["DataMatrix","EAN-13"],tryHarder:true,maxNumberOfSymbols:255};
+  const big=Math.max(W,H)>2600,passes=[];
+  for(const s of big?[1,1.6]:[2,3])passes.push([0,0,W,H,s]);
+  // moitiés qui se chevauchent, plus agrandies, pour les codes plus petits
+  for(const [fx,fy] of [[0,0],[.4,0],[0,.4],[.4,.4]])passes.push([fx*W,fy*H,.6*W,.6*H,big?2:3.5]);
+  let step=0;const scales=passes;
+  for(const [px,py,pw,ph,s] of passes){if(Math.max(pw,ph)*s>6500)continue;progress&&progress(++step,passes.length+1,boxes.length);await new Promise(r=>setTimeout(r,0));
+    let res;try{res=await Z.readBarcodes(imgData(img,px,py,pw,ph,s),opt)}catch(e){return null}
+    for(const x of res.filter(x=>x.isValid)){const P=x.position,xs=[P.topLeft.x,P.topRight.x,P.bottomLeft.x,P.bottomRight.x].map(v=>px+v/s),ys=[P.topLeft.y,P.topRight.y,P.bottomLeft.y,P.bottomRight.y].map(v=>py+v/s);
+      const x0=Math.min(...xs),y0=Math.min(...ys),w=Math.max(...xs)-x0,h=Math.max(...ys)-y0,c={cx:x0+w/2,cy:y0+h/2,w,x0,y0};
+      if(x.format==="DataMatrix"){if(!serials.has(x.text))serials.set(x.text,c)}
+      else if(!boxes.some(b=>near(b,c)))boxes.push({...c,gtin:x.text.padStart(14,"0"),text:null})}}
+  // Code carré pas encore lu : il est juste au-dessus, à gauche du code-barres. On zoome dessus.
+  progress&&progress(scales.length+1,scales.length+1,boxes.length);
+  for(const b of boxes){const own=[...serials].find(([t,c])=>c.cx>b.x0-.3*b.w&&c.cx<b.x0+.7*b.w&&c.cy>b.y0-b.w&&c.cy<b.y0+.1*b.w);if(own){b.text=own[0];serials.delete(own[0]);continue}
+    for(const [a,bb,c,d] of [[-.15,.5,-.75,0],[-.3,.7,-1,.05]]){if(b.text)break;for(const T of [500,800]){const sx=Math.max(0,b.x0+a*b.w),sy=Math.max(0,b.y0+c*b.w),sw=Math.min(W-sx,(bb-a)*b.w),sh=Math.min(H-sy,(d-c)*b.w);if(sw<5||sh<5)continue;
+      try{const r=(await Z.readBarcodes(imgData(img,sx,sy,sw,sh,T/Math.max(sw,sh)),{formats:["DataMatrix"],tryHarder:true})).find(y=>y.isValid);if(r){b.text=r.text;serials.delete(r.text);break}}catch(e){}}}}
+  // Codes carrés lus sans code-barres associé (boîte coupée sur la photo) : on les garde aussi
+  for(const [t] of serials)boxes.push({gtin:"",text:t});
+  return boxes.map(b=>({gtin:b.gtin,text:b.text}))}
 // Plusieurs boîtes sur une seule photo : on lit tous les codes carrés trouvés (détecteur natif si dispo, sinon par morceaux)
 async function decodeAll(img,progress){
   const found=new Map(),add=t=>{if(t&&!found.has(t))found.set(t,t)};
@@ -461,7 +489,9 @@ const KNOWN_GTIN={"07622100506997":{model:"one"},"07622100506799":{model:"one"},
 function parseCode(text){
   const t=text.replace(/^[\x1d\s]+|[\s]+$/g,"").replace(/^\]d2/,"");
   let gtin="",serial="",ref="";
-  if(/^01\d{14}/.test(t)){
+  if(/^\(01\)\d{14}/.test(t)){ // forme lisible « (01)…(21)…(240)… »
+    const g=(ai)=>{const m=t.match(new RegExp("\\("+ai+"\\)([^(]*)"));return m?m[1].trim():""};gtin=g("01");serial=g("21");ref=g("240");
+  } else if(/^01\d{14}/.test(t)){
     let r=t;
     while(r.length){
       r=r.replace(/^\x1d+/,"");
@@ -637,7 +667,7 @@ const qoSerialsOut=()=>new Set(S.qo.flatMap(o=>(o.serials||[]).map(z=>z.serial))
 function qoOwnerOf(serial){const sold=new Set(S.qoSales.map(x=>x.serial).filter(Boolean)),ret=new Set(S.qoRet.map(t=>t.serial).filter(Boolean));
   if(sold.has(serial)||ret.has(serial))return null;const o=S.qo.find(o=>o.pdv===S.pdv&&(o.serials||[]).some(z=>z.serial===serial));return o?o.who:null}
 function renderQoScan(){
-  $("qoScanList").innerHTML=qoScan.length?`<table class="stock"><tr><th colspan="2">${qoScan.length} appareil(s) scanné(s)</th></tr>${qoScan.map((z,i)=>`<tr><td>${esc(fmtSerial(z.serial))}<br><span class="ref">${z.model?M(z.model).name:"Modèle ?"}${z.color?" · "+COLORS[z.color].name:""}</span></td><td class="q">${!z.model||!z.color?`<select data-qi="${i}" aria-label="Modèle et couleur">${`<option value="">Choisir…</option>`+MODELS.filter(m=>!z.model||m.id===z.model).flatMap(m=>m.colors.map(c=>`<option value="${m.id}.${c}">${m.name} ${COLORS[c].name}</option>`)).join("")}</select>`:`<button class="btn ghost" style="padding:4px 10px;width:auto" data-qx="${i}">Retirer</button>`}</td></tr>`).join("")}</table>`:"";
+  $("qoScanList").innerHTML=qoScan.length?`<table class="stock"><tr><th colspan="2">${qoScan.length} appareil(s) scanné(s)</th></tr>${qoScan.map((z,i)=>`<tr><td>${z.serial?esc(fmtSerial(z.serial)):"<i>n° de série non lu</i>"}<br><span class="ref">${z.model?M(z.model).name:"Modèle ?"}${z.color?" · "+COLORS[z.color].name:""}</span></td><td class="q">${!z.model||!z.color?`<select data-qi="${i}" aria-label="Modèle et couleur">${`<option value="">Choisir…</option>`+MODELS.filter(m=>!z.model||m.id===z.model).flatMap(m=>m.colors.map(c=>`<option value="${m.id}.${c}">${m.name} ${COLORS[c].name}</option>`)).join("")}</select>`:`<button class="btn ghost" style="padding:4px 10px;width:auto" data-qx="${i}">Retirer</button>`}</td></tr>`).join("")}</table>`:"";
   const n=qoScan.filter(z=>z.model&&z.color).length;
   if(qoScan.length){$("qoTables").querySelectorAll("input").forEach(i=>{const c=qoScan.filter(z=>z.model===i.dataset.m&&z.color===i.dataset.c).length;i.value=c||""})}
   return n}
@@ -648,20 +678,25 @@ $("qoScanList").onclick=e=>{const b=e.target.closest("[data-qx]");if(!b)return;q
 $("qoScanFile").onchange=()=>{const f=$("qoScanFile").files[0];if(!f)return;$("qoScanFile").value="";
   if(!window.ZXing){$("qoScanInfo").textContent="Le lecteur de codes n'a pas pu se charger. Vérifie ta connexion et réessaie.";return}
   const img=new Image(),url=URL.createObjectURL(f);$("qoScanInfo").textContent="Lecture des codes…";
-  img.onload=async()=>{const texts=await decodeAll(img,(d,t,n)=>{$("qoScanInfo").textContent=`Lecture des codes… ${Math.round(d/t*100)} % · ${n} trouvé(s)`});URL.revokeObjectURL(url);
+  img.onload=async()=>{const prog=(d,t,n)=>{$("qoScanInfo").textContent=`Lecture des codes… ${Math.round(d/t*100)} % · ${n} trouvé(s)`};
+    let boxes=await readBoxes(img,prog);
+    if(!boxes)boxes=(await decodeAll(img,prog)).map(t=>({gtin:"",text:t}));
+    URL.revokeObjectURL(url);
     const out=qoSerialsOut(),sold=new Set(S.sales.concat(S.qoSales).map(x=>x.serial).filter(Boolean));let added=0,skipped=[],noSerial=0;
-    for(const t of texts){const p=parseCode(t);if(!p.serial){noSerial++;continue}
-      if(qoScan.some(z=>z.serial===p.serial))continue;
-      if(out.has(p.serial)||sold.has(p.serial)){skipped.push(fmtSerial(p.serial));continue}
-      const g=(S.codes||{})[p.key]||KNOWN_GTIN[p.gtin]||{};qoScan.push({serial:p.serial,gtin:p.gtin,ref:p.ref,model:g.model||null,color:g.color||null});added++}
+    for(const bx of boxes){const p=bx.text?parseCode(bx.text):{serial:"",gtin:bx.gtin,ref:"",key:"GTIN:"+bx.gtin};if(!p.gtin)p.gtin=bx.gtin;
+      if(p.serial&&qoScan.some(z=>z.serial===p.serial))continue;
+      if(p.serial&&(out.has(p.serial)||sold.has(p.serial))){skipped.push(fmtSerial(p.serial));continue}
+      if(!p.serial&&!p.gtin)continue;
+      if(!p.serial)noSerial++;
+      const key="GTIN:"+p.gtin,g=(S.codes||{})[key]||KNOWN_GTIN[p.gtin]||{};qoScan.push({serial:p.serial||null,gtin:p.gtin,ref:p.ref,model:g.model||null,color:g.color||null});added++}
     renderQoScan();
-    $("qoScanInfo").textContent=(added?`${added} appareil(s) ajouté(s).`:"Aucun nouveau numéro de série lu.")+(skipped.length?` Déjà sortis ou vendus, ignorés : ${skipped.join(", ")}.`:"")+(noSerial?` ${noSerial} code(s) produit lu(s) sans numéro de série : rapproche la photo ou ajoute-les à la main.`:"")+(qoScan.some(z=>!z.color)?" Choisis le modèle et la couleur des codes inconnus (une seule fois par code).":"")};
+    $("qoScanInfo").textContent=(added?`${added} appareil(s) ajouté(s).`:"Aucun nouveau numéro de série lu.")+(skipped.length?` Déjà sortis ou vendus, ignorés : ${skipped.join(", ")}.`:"")+(noSerial?` ${noSerial} boîte(s) comptée(s) sans numéro de série lisible (photo trop petite ou floue) : elles sont dans les quantités, rescanne-les de plus près si tu veux leur n° de série.`:"")+(qoScan.some(z=>!z.color)?" Choisis le modèle et la couleur des codes inconnus (une seule fois par code).":"")};
   img.onerror=()=>{URL.revokeObjectURL(url);$("qoScanInfo").textContent="Cette image ne peut pas être ouverte. Choisis une photo JPG ou PNG."};img.src=url};
 $("saveQo").onclick=()=>{const who=$("qoName").value.trim();
   const items=[...$("qoTables").querySelectorAll("input")].map(i=>({model:i.dataset.m,color:i.dataset.c,qty:parseInt(i.value)||0})).filter(x=>x.qty>0);
   if(!who){toast("Indique le nom du collègue");return} if(!items.length){toast("Saisis au moins une quantité");return}
   if(qoScan.some(z=>!z.model||!z.color)){toast("Choisis le modèle et la couleur de chaque appareil scanné");return}
-  S.qo.push({id:newId(),pdv:S.pdv,who,ts:Date.now(),items,serials:qoScan.map(z=>({serial:z.serial,model:z.model,color:z.color}))});qoScan=[];renderQoScan();$("qoTables").querySelectorAll("input").forEach(i=>i.value="");$("qoName").value="";
+  S.qo.push({id:newId(),pdv:S.pdv,who,ts:Date.now(),items,serials:qoScan.filter(z=>z.serial).map(z=>({serial:z.serial,model:z.model,color:z.color}))});qoScan=[];renderQoScan();$("qoTables").querySelectorAll("input").forEach(i=>i.value="");$("qoName").value="";
   save();renderAll();renderQo();toast(`Sortie QO enregistrée : ${items.reduce((a,i)=>a+i.qty,0)} appareil(s) pour ${who}`)};
 $("qoList").onclick=e=>{const b=e.target.closest("[data-ret]");if(!b)return;const[w,k]=b.dataset.ret.split("|"),[m,c]=k.split(".");
   S.qoRet.push({id:newId(),pdv:S.pdv,who:w,model:m,color:c,qty:1,ts:Date.now()});save();renderAll();renderQo();toast(`Retour : ${M(m).name} ${COLORS[c].name} remis en stock`)};
